@@ -1574,10 +1574,22 @@ Fn_Dis_2018 %>% filter(Site=="102") %>% view()
 
 ## Merge 
 ```{r}
-
+# rbind 
 Final_ND_Discharge <-
-  rbind(Fn_Dis_2006, Fn_Dis_2007, Fn_Dis_2008, Fn_Dis_2009, Fn_Dis_2010, Fn_Dis_2011, Fn_Dis_2012, Fn_Dis_2013, Fn_Dis_2014, Fn_Dis_2015, Fn_Dis_2016, Fn_Dis_2017, Fn_Dis_2018) %>% arrange(Site, Date)
+  rbind(Fn_Dis_2006, Fn_Dis_2007, Fn_Dis_2008, Fn_Dis_2009, Fn_Dis_2010, Fn_Dis_2011, Fn_Dis_2012, Fn_Dis_2013, Fn_Dis_2014, Fn_Dis_2015, Fn_Dis_2016, Fn_Dis_2017, Fn_Dis_2018)
 
+# Change column names
+colnames(Final_ND_Discharge)[4:5] <-c("Site_Name", "Site_Code")
+
+# de-select Site number and add all date for data set
+Final_ND_Discharge <- Final_ND_Discharge %>% select(-2, -4) %>% 
+  complete(Date=seq.Date(min(as.Date("2006-01-01")), max(as.Date("2018-12-31")), by="day"), Site_Code)
+
+# Check out
+Final_ND_Discharge %>% filter(Site_Code=="HM8") %>% view()
+Final_ND_Discharge %>% filter(Site_Code=="HT_MR1") %>% view()
+
+# Save the final result as csv
 write.csv(Final_ND_Discharge, "D:/Rmarkdown/Discharge_Data/Final_ND_Discharge.csv")
 ```
 
