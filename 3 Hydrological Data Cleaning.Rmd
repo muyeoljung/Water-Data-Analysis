@@ -1,0 +1,1583 @@
+---
+title: "Data Wrangling and Cleaning for Discharge Data in Study Area"
+author: "Muyeol Jung"
+data: "08/10/2020
+output:
+  github_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readxl)
+library(rio)
+library(lubridate)
+#install.packages("rio")
+```
+
+
+## Hydrologic Station Data
+```{r}
+Hydro_Station <- read_csv("https://raw.githubusercontent.com/muyeoljung/Water-Data-Analysis/master/Hydrologic%20data/Discharge_Site_Table.csv")
+Hydro_Station <- Hydro_Station %>% filter(Grades=="1") # Major Sites in study are
+
+# Find min number and max number of spreadsheet
+Finding_Data <- data.frame(min=sapply(Hydro_Station[,6:18], min, na.rm=TRUE), max=sapply(Hydro_Station[,6:18], max, na.rm=TRUE))
+```
+
+## Data Cleaning
+
+
+### 2006
+```{r}
+# Import Data (Data: 51-79)
+Dis_2006_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2006_51_75.xls", setclass = "tbl")
+Dis_2006_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2006_76_100.xls", setclass = "tbl")
+
+Dis_2006 <- c(Dis_2006_1, Dis_2006_2)
+rm(Dis_2006_1, Dis_2006_2)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2006 <- lapply(Dis_2006, function(x) x[6:36, 2:13])
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2006 <- lapply(Dis_2006, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2006_1 <- seq.Date(from = as.Date("2006-01-01"), length.out = 31, by=1)
+D_2006_2 <- seq.Date(from = as.Date("2006-02-01"), length.out = 31, by=1)
+D_2006_3 <- seq.Date(from = as.Date("2006-03-01"), length.out = 31, by=1)
+D_2006_4 <- seq.Date(from = as.Date("2006-04-01"), length.out = 31, by=1)
+D_2006_5 <- seq.Date(from = as.Date("2006-05-01"), length.out = 31, by=1)
+D_2006_6 <- seq.Date(from = as.Date("2006-06-01"), length.out = 31, by=1)
+D_2006_7 <- seq.Date(from = as.Date("2006-07-01"), length.out = 31, by=1)
+D_2006_8 <- seq.Date(from = as.Date("2006-08-01"), length.out = 31, by=1)
+D_2006_9 <- seq.Date(from = as.Date("2006-09-01"), length.out = 31, by=1)
+D_2006_10 <- seq.Date(from = as.Date("2006-10-01"), length.out = 31, by=1)
+D_2006_11 <- seq.Date(from = as.Date("2006-11-01"), length.out = 31, by=1)
+D_2006_12 <- seq.Date(from = as.Date("2006-12-01"), length.out = 31, by=1)
+
+Dis_2006 <- lapply(Dis_2006, function(x) cbind(x, Jan = D_2006_1, Feb = D_2006_2, Mar = D_2006_3,
+                                                   Apr = D_2006_4, May = D_2006_5, Jun = D_2006_6,
+                                                   Jul = D_2006_7, Aug = D_2006_8, Sep = D_2006_9,
+                                                   Oct = D_2006_10, Nov = D_2006_11, Dec = D_2006_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2006 <- lapply(Dis_2006, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2006 <- lapply(Dis_2006, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2006 <- lapply(Dis_2006, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2006 <- lapply(Dis_2006, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2006  <- lapply(Dis_2006, function(x) drop_na(x))
+#view(Dis_2006_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2006_df <- as.data.frame(do.call(rbind, Dis_2006))
+
+
+# Create a new column containing Site number
+Dis_2006_df$ETC <- rownames(Dis_2006_df)
+rownames(Dis_2006_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2006_df <- separate(Dis_2006_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2006_df <- Dis_2006_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2006_df$Date <- as.Date(as.numeric(Dis_2006_df$Date), origin = "2005-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2006_df <- Dis_2006_df %>% complete(Date= seq.Date(min(as.Date("2006-01-01")), max(as.Date("2006-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2006_df$Discharge <- as.numeric(as.character(Dis_2006_df$Discharge))
+
+# Arrange the order
+Dis_2006_df <- Dis_2006_df %>% arrange(Site, Date)
+
+Dis_2006_df %>% filter(Site=="51") %>% view()
+Dis_2006_df %>% filter(Site=="68") %>% view()
+
+# Dis_2006 long format complete
+
+# Visualise
+ggplot(Dis_2006_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2006_df, Site=="51"| Site=="68"), aes(x=Date, y=Discharge, colour=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2006_df, Site=="51" | Site=="68"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2006 <- Hydro_Station %>% select(5, 6, 19) %>% drop_na()
+colnames(Site_2006)[2] <- "Site"
+Dis_2006_df$Site <- as.numeric(Dis_2006_df$Site)
+
+
+Fn_Dis_2006 <- right_join(Dis_2006_df, Site_2006, by="Site")
+rm(Dis_2006, Dis_2006_df, Site_2006)
+rm(D_2006_1, D_2006_2, D_2006_3, D_2006_4, D_2006_5, D_2006_6, D_2006_7, D_2006_8, D_2006_9, D_2006_10, D_2006_11, D_2006_12)
+
+Fn_Dis_2006 %>% filter(Site=="51") %>% view()
+
+```
+
+
+### 2007
+```{r}
+# Import Data (Data: 29-50)
+Dis_2007_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2007_26_50.xls", setclass = "tbl")
+
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2007 <- lapply(Dis_2007_1, function(x) x[6:36, 2:13])
+rm(Dis_2007_1)
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2007 <- lapply(Dis_2007, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2007_1 <- seq.Date(from = as.Date("2007-01-01"), length.out = 31, by=1)
+D_2007_2 <- seq.Date(from = as.Date("2007-02-01"), length.out = 31, by=1)
+D_2007_3 <- seq.Date(from = as.Date("2007-03-01"), length.out = 31, by=1)
+D_2007_4 <- seq.Date(from = as.Date("2007-04-01"), length.out = 31, by=1)
+D_2007_5 <- seq.Date(from = as.Date("2007-05-01"), length.out = 31, by=1)
+D_2007_6 <- seq.Date(from = as.Date("2007-06-01"), length.out = 31, by=1)
+D_2007_7 <- seq.Date(from = as.Date("2007-07-01"), length.out = 31, by=1)
+D_2007_8 <- seq.Date(from = as.Date("2007-08-01"), length.out = 31, by=1)
+D_2007_9 <- seq.Date(from = as.Date("2007-09-01"), length.out = 31, by=1)
+D_2007_10 <- seq.Date(from = as.Date("2007-10-01"), length.out = 31, by=1)
+D_2007_11 <- seq.Date(from = as.Date("2007-11-01"), length.out = 31, by=1)
+D_2007_12 <- seq.Date(from = as.Date("2007-12-01"), length.out = 31, by=1)
+
+Dis_2007 <- lapply(Dis_2007, function(x) cbind(x, Jan = D_2007_1, Feb = D_2007_2, Mar = D_2007_3,
+                                                   Apr = D_2007_4, May = D_2007_5, Jun = D_2007_6,
+                                                   Jul = D_2007_7, Aug = D_2007_8, Sep = D_2007_9,
+                                                   Oct = D_2007_10, Nov = D_2007_11, Dec = D_2007_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2007 <- lapply(Dis_2007, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2007 <- lapply(Dis_2007, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2007 <- lapply(Dis_2007, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2007 <- lapply(Dis_2007, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2007  <- lapply(Dis_2007, function(x) drop_na(x))
+#view(Dis_2007_1[['76']]) <- always check
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2007_df <- as.data.frame(do.call(rbind, Dis_2007))
+
+
+# Create a new column containing Site number
+Dis_2007_df$ETC <- rownames(Dis_2007_df)
+rownames(Dis_2007_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2007_df <- separate(Dis_2007_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2007_df <- Dis_2007_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2007_df$Date <- as.Date(as.numeric(Dis_2007_df$Date), origin = "2006-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2007_df <- Dis_2007_df %>% complete(Date= seq.Date(min(as.Date("2007-01-01")), max(as.Date("2007-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2007_df$Discharge <- as.numeric(as.character(Dis_2007_df$Discharge))
+
+# Arrange the order
+Dis_2007_df <- Dis_2007_df %>% arrange(Site, Date)
+
+Dis_2007_df %>% filter(Site=="29") %>% view()
+Dis_2007_df %>% filter(Site=="40") %>% view()
+Dis_2007_df %>% filter(Site=="45") %>% view()
+
+# Dis_2007 long format complete
+
+# Visualise
+ggplot(Dis_2007_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2007_df, Site=="40"| Site=="45"), aes(x=Date, y=Discharge, colour=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2007_df, Site=="40" | Site=="45"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2007 <- Hydro_Station %>% select(5, 7, 19) %>% drop_na()
+colnames(Site_2007)[2] <- "Site"
+Dis_2007_df$Site <- as.numeric(Dis_2007_df$Site)
+
+
+Fn_Dis_2007 <- right_join(Dis_2007_df, Site_2007, by="Site")
+rm(Dis_2007, Dis_2007_df, Site_2007)
+rm(D_2007_1, D_2007_2, D_2007_3, D_2007_4, D_2007_5, D_2007_6, D_2007_7, D_2007_8, D_2007_9, D_2007_10, D_2007_11, D_2007_12)
+
+Fn_Dis_2007 %>% filter(Site=="40") %>% view()
+```
+
+
+### 2008
+```{r}
+# Import Data (Data: 33-58)
+Dis_2008_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2008_26_50.xls", setclass = "tbl")
+Dis_2008_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2008_51_75.xls", setclass = "tbl")
+
+Dis_2008 <- c(Dis_2008_1, Dis_2008_2)
+rm(Dis_2008_1, Dis_2008_2)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2008 <- lapply(Dis_2008, function(x) x[6:36, 2:13])
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2008 <- lapply(Dis_2008, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2008_1 <- seq.Date(from = as.Date("2008-01-01"), length.out = 31, by=1)
+D_2008_2 <- seq.Date(from = as.Date("2008-02-01"), length.out = 31, by=1)
+D_2008_3 <- seq.Date(from = as.Date("2008-03-01"), length.out = 31, by=1)
+D_2008_4 <- seq.Date(from = as.Date("2008-04-01"), length.out = 31, by=1)
+D_2008_5 <- seq.Date(from = as.Date("2008-05-01"), length.out = 31, by=1)
+D_2008_6 <- seq.Date(from = as.Date("2008-06-01"), length.out = 31, by=1)
+D_2008_7 <- seq.Date(from = as.Date("2008-07-01"), length.out = 31, by=1)
+D_2008_8 <- seq.Date(from = as.Date("2008-08-01"), length.out = 31, by=1)
+D_2008_9 <- seq.Date(from = as.Date("2008-09-01"), length.out = 31, by=1)
+D_2008_10 <- seq.Date(from = as.Date("2008-10-01"), length.out = 31, by=1)
+D_2008_11 <- seq.Date(from = as.Date("2008-11-01"), length.out = 31, by=1)
+D_2008_12 <- seq.Date(from = as.Date("2008-12-01"), length.out = 31, by=1)
+
+Dis_2008 <- lapply(Dis_2008, function(x) cbind(x, Jan = D_2008_1, Feb = D_2008_2, Mar = D_2008_3,
+                                                   Apr = D_2008_4, May = D_2008_5, Jun = D_2008_6,
+                                                   Jul = D_2008_7, Aug = D_2008_8, Sep = D_2008_9,
+                                                   Oct = D_2008_10, Nov = D_2008_11, Dec = D_2008_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2008 <- lapply(Dis_2008, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2008 <- lapply(Dis_2008, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2008 <- lapply(Dis_2008, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2008 <- lapply(Dis_2008, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2008  <- lapply(Dis_2008, function(x) drop_na(x))
+#view(Dis_2008_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2008_df <- as.data.frame(do.call(rbind, Dis_2008))
+
+
+# Create a new column containing Site number
+Dis_2008_df$ETC <- rownames(Dis_2008_df)
+rownames(Dis_2008_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2008_df <- separate(Dis_2008_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2008_df <- Dis_2008_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2008_df$Date <- as.Date(as.numeric(Dis_2008_df$Date), origin = "2007-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2008_df <- Dis_2008_df %>% complete(Date= seq.Date(min(as.Date("2008-01-01")), max(as.Date("2008-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2008_df$Discharge <- as.numeric(as.character(Dis_2008_df$Discharge))
+
+# Arrange the order
+Dis_2008_df <- Dis_2008_df %>% arrange(Site, Date)
+
+Dis_2008_df %>% filter(Site=="39") %>% view()
+Dis_2008_df %>% filter(Site=="41") %>% view()
+Dis_2008_df %>% filter(Site=="50") %>% view()
+
+# Dis_2008 long format complete
+
+# Visualise
+ggplot(Dis_2008_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2008_df, Site=="39"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2008_df, Site=="39" | Site=="41" | Site=="50"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2008 <- Hydro_Station %>% select(5, 8, 19) %>% drop_na()
+colnames(Site_2008)[2] <- "Site"
+Dis_2008_df$Site <- as.numeric(Dis_2008_df$Site)
+
+
+Fn_Dis_2008 <- right_join(Dis_2008_df, Site_2008, by="Site")
+rm(Dis_2008, Dis_2008_df, Site_2008)
+rm(D_2008_1, D_2008_2, D_2008_3, D_2008_4, D_2008_5, D_2008_6, D_2008_7, D_2008_8, D_2008_9, D_2008_10, D_2008_11, D_2008_12)
+
+Fn_Dis_2008 %>% filter(Site=="41") %>% view()
+```
+
+
+### 2009
+```{r}
+# Import Data (Data: 34-57)
+Dis_2009_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2009_26_50.xls", setclass = "tbl")
+Dis_2009_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2009_51_75.xls", setclass = "tbl")
+
+Dis_2009 <- c(Dis_2009_1, Dis_2009_2)
+rm(Dis_2009_1, Dis_2009_2)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2009 <- lapply(Dis_2009, function(x) x[6:36, 2:13])
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2009 <- lapply(Dis_2009, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2009_1 <- seq.Date(from = as.Date("2009-01-01"), length.out = 31, by=1)
+D_2009_2 <- seq.Date(from = as.Date("2009-02-01"), length.out = 31, by=1)
+D_2009_3 <- seq.Date(from = as.Date("2009-03-01"), length.out = 31, by=1)
+D_2009_4 <- seq.Date(from = as.Date("2009-04-01"), length.out = 31, by=1)
+D_2009_5 <- seq.Date(from = as.Date("2009-05-01"), length.out = 31, by=1)
+D_2009_6 <- seq.Date(from = as.Date("2009-06-01"), length.out = 31, by=1)
+D_2009_7 <- seq.Date(from = as.Date("2009-07-01"), length.out = 31, by=1)
+D_2009_8 <- seq.Date(from = as.Date("2009-08-01"), length.out = 31, by=1)
+D_2009_9 <- seq.Date(from = as.Date("2009-09-01"), length.out = 31, by=1)
+D_2009_10 <- seq.Date(from = as.Date("2009-10-01"), length.out = 31, by=1)
+D_2009_11 <- seq.Date(from = as.Date("2009-11-01"), length.out = 31, by=1)
+D_2009_12 <- seq.Date(from = as.Date("2009-12-01"), length.out = 31, by=1)
+
+Dis_2009 <- lapply(Dis_2009, function(x) cbind(x, Jan = D_2009_1, Feb = D_2009_2, Mar = D_2009_3,
+                                                   Apr = D_2009_4, May = D_2009_5, Jun = D_2009_6,
+                                                   Jul = D_2009_7, Aug = D_2009_8, Sep = D_2009_9,
+                                                   Oct = D_2009_10, Nov = D_2009_11, Dec = D_2009_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2009 <- lapply(Dis_2009, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2009 <- lapply(Dis_2009, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2009 <- lapply(Dis_2009, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2009 <- lapply(Dis_2009, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2009  <- lapply(Dis_2009, function(x) drop_na(x))
+#view(Dis_2009_1[['76']]) <- always check
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2009_df <- as.data.frame(do.call(rbind, Dis_2009))
+
+
+# Create a new column containing Site number
+Dis_2009_df$ETC <- rownames(Dis_2009_df)
+rownames(Dis_2009_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2009_df <- separate(Dis_2009_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2009_df <- Dis_2009_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2009_df$Date <- as.Date(as.numeric(Dis_2009_df$Date), origin = "2008-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2009_df <- Dis_2009_df %>% complete(Date= seq.Date(min(as.Date("2009-01-01")), max(as.Date("2009-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2009_df$Discharge <- as.numeric(as.character(Dis_2009_df$Discharge))
+
+# Arrange the order
+Dis_2009_df <- Dis_2009_df %>% arrange(Site, Date)
+
+Dis_2009_df %>% filter(Site=="46") %>% view()
+Dis_2009_df %>% filter(Site=="52") %>% view()
+Dis_2009_df %>% filter(Site=="49") %>% view()
+
+# Dis_2009 long format complete
+
+# Visualise
+ggplot(Dis_2009_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2009_df, Site=="46"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2009_df, Site=="46" | Site=="49" | Site=="52"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2009 <- Hydro_Station %>% select(5, 9, 19) %>% drop_na()
+colnames(Site_2009)[2] <- "Site"
+Dis_2009_df$Site <- as.numeric(Dis_2009_df$Site)
+
+
+Fn_Dis_2009 <- right_join(Dis_2009_df, Site_2009, by="Site")
+rm(Dis_2009, Dis_2009_df, Site_2009)
+rm(D_2009_1, D_2009_2, D_2009_3, D_2009_4, D_2009_5, D_2009_6, D_2009_7, D_2009_8, D_2009_9, D_2009_10, D_2009_11, D_2009_12)
+
+Fn_Dis_2009 %>% filter(Site=="52") %>% view()
+```
+
+
+### 2010
+```{r}
+# Import Data (Data: 51-86)
+Dis_2010_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2010_51_75.xls", setclass = "tbl")
+Dis_2010_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2010_76_100.xls", setclass = "tbl")
+
+Dis_2010 <- c(Dis_2010_1, Dis_2010_2)
+rm(Dis_2010_1, Dis_2010_2)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2010 <- lapply(Dis_2010, function(x) x[6:36, 2:13])
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2010 <- lapply(Dis_2010, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2010_1 <- seq.Date(from = as.Date("2010-01-01"), length.out = 31, by=1)
+D_2010_2 <- seq.Date(from = as.Date("2010-02-01"), length.out = 31, by=1)
+D_2010_3 <- seq.Date(from = as.Date("2010-03-01"), length.out = 31, by=1)
+D_2010_4 <- seq.Date(from = as.Date("2010-04-01"), length.out = 31, by=1)
+D_2010_5 <- seq.Date(from = as.Date("2010-05-01"), length.out = 31, by=1)
+D_2010_6 <- seq.Date(from = as.Date("2010-06-01"), length.out = 31, by=1)
+D_2010_7 <- seq.Date(from = as.Date("2010-07-01"), length.out = 31, by=1)
+D_2010_8 <- seq.Date(from = as.Date("2010-08-01"), length.out = 31, by=1)
+D_2010_9 <- seq.Date(from = as.Date("2010-09-01"), length.out = 31, by=1)
+D_2010_10 <- seq.Date(from = as.Date("2010-10-01"), length.out = 31, by=1)
+D_2010_11 <- seq.Date(from = as.Date("2010-11-01"), length.out = 31, by=1)
+D_2010_12 <- seq.Date(from = as.Date("2010-12-01"), length.out = 31, by=1)
+
+Dis_2010 <- lapply(Dis_2010, function(x) cbind(x, Jan = D_2010_1, Feb = D_2010_2, Mar = D_2010_3,
+                                                   Apr = D_2010_4, May = D_2010_5, Jun = D_2010_6,
+                                                   Jul = D_2010_7, Aug = D_2010_8, Sep = D_2010_9,
+                                                   Oct = D_2010_10, Nov = D_2010_11, Dec = D_2010_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2010 <- lapply(Dis_2010, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2010 <- lapply(Dis_2010, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2010 <- lapply(Dis_2010, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2010 <- lapply(Dis_2010, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2010  <- lapply(Dis_2010, function(x) drop_na(x))
+#view(Dis_2010_1[['76']]) <- always check
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2010_df <- as.data.frame(do.call(rbind, Dis_2010))
+
+
+# Create a new column containing Site number
+Dis_2010_df$ETC <- rownames(Dis_2010_df)
+rownames(Dis_2010_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2010_df <- separate(Dis_2010_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2010_df <- Dis_2010_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2010_df$Date <- as.Date(as.numeric(Dis_2010_df$Date), origin = "2009-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2010_df <- Dis_2010_df %>% complete(Date= seq.Date(min(as.Date("2010-01-01")), max(as.Date("2010-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2010_df$Discharge <- as.numeric(as.character(Dis_2010_df$Discharge))
+
+# Arrange the order
+Dis_2010_df <- Dis_2010_df %>% arrange(Site, Date)
+
+Dis_2010_df %>% filter(Site=="64") %>% view()
+Dis_2010_df %>% filter(Site=="75") %>% view()
+Dis_2010_df %>% filter(Site=="83") %>% view()
+
+# Dis_2010 long format complete
+
+# Visualise
+ggplot(Dis_2010_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2010_df, Site=="64"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2010_df, Site=="64" | Site=="75" | Site=="83"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2010 <- Hydro_Station %>% select(5, 10, 19) %>% drop_na()
+colnames(Site_2010)[2] <- "Site"
+Dis_2010_df$Site <- as.numeric(Dis_2010_df$Site)
+
+
+Fn_Dis_2010 <- right_join(Dis_2010_df, Site_2010, by="Site")
+rm(Dis_2010, Dis_2010_df, Site_2010)
+rm(D_2010_1, D_2010_2, D_2010_3, D_2010_4, D_2010_5, D_2010_6, D_2010_7, D_2010_8, D_2010_9, D_2010_10, D_2010_11, D_2010_12)
+
+Fn_Dis_2010 %>% filter(Site=="76") %>% view()
+```
+
+
+### 2011
+```{r}
+# Import Data (Data: 48-86)
+Dis_2011_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2011_26_50.xls", setclass = "tbl")
+Dis_2011_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2011_51_75.xls", setclass = "tbl")
+Dis_2011_3 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2011_76_100.xls", setclass = "tbl")
+
+Dis_2011 <- c(Dis_2011_1, Dis_2011_2, Dis_2011_3)
+rm(Dis_2011_1, Dis_2011_2, Dis_2011_3)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2011 <- lapply(Dis_2011, function(x) x[6:36, 2:13])
+
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2011 <- lapply(Dis_2011, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2011_1 <- seq.Date(from = as.Date("2011-01-01"), length.out = 31, by=1)
+D_2011_2 <- seq.Date(from = as.Date("2011-02-01"), length.out = 31, by=1)
+D_2011_3 <- seq.Date(from = as.Date("2011-03-01"), length.out = 31, by=1)
+D_2011_4 <- seq.Date(from = as.Date("2011-04-01"), length.out = 31, by=1)
+D_2011_5 <- seq.Date(from = as.Date("2011-05-01"), length.out = 31, by=1)
+D_2011_6 <- seq.Date(from = as.Date("2011-06-01"), length.out = 31, by=1)
+D_2011_7 <- seq.Date(from = as.Date("2011-07-01"), length.out = 31, by=1)
+D_2011_8 <- seq.Date(from = as.Date("2011-08-01"), length.out = 31, by=1)
+D_2011_9 <- seq.Date(from = as.Date("2011-09-01"), length.out = 31, by=1)
+D_2011_10 <- seq.Date(from = as.Date("2011-10-01"), length.out = 31, by=1)
+D_2011_11 <- seq.Date(from = as.Date("2011-11-01"), length.out = 31, by=1)
+D_2011_12 <- seq.Date(from = as.Date("2011-12-01"), length.out = 31, by=1)
+
+Dis_2011 <- lapply(Dis_2011, function(x) cbind(x, Jan = D_2011_1, Feb = D_2011_2, Mar = D_2011_3,
+                                                   Apr = D_2011_4, May = D_2011_5, Jun = D_2011_6,
+                                                   Jul = D_2011_7, Aug = D_2011_8, Sep = D_2011_9,
+                                                   Oct = D_2011_10, Nov = D_2011_11, Dec = D_2011_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2011 <- lapply(Dis_2011, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2011 <- lapply(Dis_2011, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2011 <- lapply(Dis_2011, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2011 <- lapply(Dis_2011, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2011  <- lapply(Dis_2011, function(x) drop_na(x))
+#view(Dis_2011_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2011_df <- as.data.frame(do.call(rbind, Dis_2011))
+
+
+# Create a new column containing Site number
+Dis_2011_df$ETC <- rownames(Dis_2011_df)
+rownames(Dis_2011_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2011_df <- separate(Dis_2011_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2011_df <- Dis_2011_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2011_df$Date <- as.Date(as.numeric(Dis_2011_df$Date), origin = "2010-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2011_df <- Dis_2011_df %>% complete(Date= seq.Date(min(as.Date("2011-01-01")), max(as.Date("2011-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2011_df$Discharge <- as.numeric(as.character(Dis_2011_df$Discharge))
+
+# Arrange the order
+Dis_2011_df <- Dis_2011_df %>% arrange(Site, Date)
+
+Dis_2011_df %>% filter(Site=="48") %>% view()
+Dis_2011_df %>% filter(Site=="55") %>% view()
+Dis_2011_df %>% filter(Site=="70") %>% view()
+
+# Dis_2011 long format complete
+
+# Visualise
+ggplot(Dis_2011_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2011_df, Site=="48"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2011_df, Site=="48" | Site=="55" | Site=="70"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2011 <- Hydro_Station %>% select(5, 11, 19) %>% drop_na()
+colnames(Site_2011)[2] <- "Site"
+Dis_2011_df$Site <- as.numeric(Dis_2011_df$Site)
+
+
+Fn_Dis_2011 <- right_join(Dis_2011_df, Site_2011, by="Site")
+rm(Dis_2011, Dis_2011_df, Site_2011)
+rm(D_2011_1, D_2011_2, D_2011_3, D_2011_4, D_2011_5, D_2011_6, D_2011_7, D_2011_8, D_2011_9, D_2011_10, D_2011_11, D_2011_12)
+
+Fn_Dis_2011 %>% filter(Site=="70") %>% view()
+```
+
+
+### 2012
+```{r}
+# Import Data (Data: 50-99)
+Dis_2012_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2012_26_50.xls", setclass = "tbl")
+Dis_2012_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2012_51_75.xls", setclass = "tbl")
+Dis_2012_3 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2012_76_100.xls", setclass = "tbl")
+
+Dis_2012 <- c(Dis_2012_1, Dis_2012_2, Dis_2012_3)
+rm(Dis_2012_1, Dis_2012_2, Dis_2012_3)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2012 <- lapply(Dis_2012, function(x) x[5:35, 2:25])
+
+# Select discharge values only
+Dis_2012 <- lapply(Dis_2012, function(x) x[,c(1,3,5,7,9,11,13,15,17,19,21,23)])
+
+
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2012 <- lapply(Dis_2012, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2012_1 <- seq.Date(from = as.Date("2012-01-01"), length.out = 31, by=1)
+D_2012_2 <- seq.Date(from = as.Date("2012-02-01"), length.out = 31, by=1)
+D_2012_3 <- seq.Date(from = as.Date("2012-03-01"), length.out = 31, by=1)
+D_2012_4 <- seq.Date(from = as.Date("2012-04-01"), length.out = 31, by=1)
+D_2012_5 <- seq.Date(from = as.Date("2012-05-01"), length.out = 31, by=1)
+D_2012_6 <- seq.Date(from = as.Date("2012-06-01"), length.out = 31, by=1)
+D_2012_7 <- seq.Date(from = as.Date("2012-07-01"), length.out = 31, by=1)
+D_2012_8 <- seq.Date(from = as.Date("2012-08-01"), length.out = 31, by=1)
+D_2012_9 <- seq.Date(from = as.Date("2012-09-01"), length.out = 31, by=1)
+D_2012_10 <- seq.Date(from = as.Date("2012-10-01"), length.out = 31, by=1)
+D_2012_11 <- seq.Date(from = as.Date("2012-11-01"), length.out = 31, by=1)
+D_2012_12 <- seq.Date(from = as.Date("2012-12-01"), length.out = 31, by=1)
+
+Dis_2012 <- lapply(Dis_2012, function(x) cbind(x, Jan = D_2012_1, Feb = D_2012_2, Mar = D_2012_3,
+                                                   Apr = D_2012_4, May = D_2012_5, Jun = D_2012_6,
+                                                   Jul = D_2012_7, Aug = D_2012_8, Sep = D_2012_9,
+                                                   Oct = D_2012_10, Nov = D_2012_11, Dec = D_2012_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2012 <- lapply(Dis_2012, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2012 <- lapply(Dis_2012, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2012 <- lapply(Dis_2012, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2012 <- lapply(Dis_2012, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2012  <- lapply(Dis_2012, function(x) drop_na(x))
+#view(Dis_2012_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2012_df <- as.data.frame(do.call(rbind, Dis_2012))
+
+
+# Create a new column containing Site number
+Dis_2012_df$ETC <- rownames(Dis_2012_df)
+rownames(Dis_2012_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2012_df <- separate(Dis_2012_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2012_df <- Dis_2012_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2012_df$Date <- as.Date(as.numeric(Dis_2012_df$Date), origin = "2011-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2012_df <- Dis_2012_df %>% complete(Date= seq.Date(min(as.Date("2012-01-01")), max(as.Date("2012-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2012_df$Discharge <- as.numeric(as.character(Dis_2012_df$Discharge))
+
+# Arrange the order
+Dis_2012_df <- Dis_2012_df %>% arrange(Site, Date)
+
+Dis_2012_df %>% filter(Site=="50") %>% view()
+Dis_2012_df %>% filter(Site=="70") %>% view()
+Dis_2012_df %>% filter(Site=="75") %>% view()
+
+# Dis_2012 long format complete
+
+# Visualise
+ggplot(Dis_2012_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2012_df, Site=="75"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2012_df, Site=="50" | Site=="70" | Site=="75"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2012 <- Hydro_Station %>% select(5, 12, 19) %>% drop_na()
+colnames(Site_2012)[2] <- "Site"
+Dis_2012_df$Site <- as.numeric(Dis_2012_df$Site)
+
+
+Fn_Dis_2012 <- right_join(Dis_2012_df, Site_2012, by="Site")
+rm(Dis_2012, Dis_2012_df, Site_2012)
+rm(D_2012_1, D_2012_2, D_2012_3, D_2012_4, D_2012_5, D_2012_6, D_2012_7, D_2012_8, D_2012_9, D_2012_10, D_2012_11, D_2012_12)
+
+Fn_Dis_2012 %>% filter(Site=="75") %>% view()
+```
+
+
+### 2013
+```{r}
+# Import Data (Data: 53-105)
+Dis_2013_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2013_51_75.xls", setclass = "tbl")
+Dis_2013_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2013_76_100.xls", setclass = "tbl")
+Dis_2013_3 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2013_101_125.xls", setclass = "tbl")
+
+Dis_2013 <- c(Dis_2013_1, Dis_2013_2, Dis_2013_3)
+rm(Dis_2013_1, Dis_2013_2, Dis_2013_3)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2013 <- lapply(Dis_2013, function(x) x[5:35, 2:25])
+
+# Select discharge values only
+Dis_2013 <- lapply(Dis_2013, function(x) x[,c(1,3,5,7,9,11,13,15,17,19,21,23)])
+
+
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2013 <- lapply(Dis_2013, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2013_1 <- seq.Date(from = as.Date("2013-01-01"), length.out = 31, by=1)
+D_2013_2 <- seq.Date(from = as.Date("2013-02-01"), length.out = 31, by=1)
+D_2013_3 <- seq.Date(from = as.Date("2013-03-01"), length.out = 31, by=1)
+D_2013_4 <- seq.Date(from = as.Date("2013-04-01"), length.out = 31, by=1)
+D_2013_5 <- seq.Date(from = as.Date("2013-05-01"), length.out = 31, by=1)
+D_2013_6 <- seq.Date(from = as.Date("2013-06-01"), length.out = 31, by=1)
+D_2013_7 <- seq.Date(from = as.Date("2013-07-01"), length.out = 31, by=1)
+D_2013_8 <- seq.Date(from = as.Date("2013-08-01"), length.out = 31, by=1)
+D_2013_9 <- seq.Date(from = as.Date("2013-09-01"), length.out = 31, by=1)
+D_2013_10 <- seq.Date(from = as.Date("2013-10-01"), length.out = 31, by=1)
+D_2013_11 <- seq.Date(from = as.Date("2013-11-01"), length.out = 31, by=1)
+D_2013_12 <- seq.Date(from = as.Date("2013-12-01"), length.out = 31, by=1)
+
+Dis_2013 <- lapply(Dis_2013, function(x) cbind(x, Jan = D_2013_1, Feb = D_2013_2, Mar = D_2013_3,
+                                                   Apr = D_2013_4, May = D_2013_5, Jun = D_2013_6,
+                                                   Jul = D_2013_7, Aug = D_2013_8, Sep = D_2013_9,
+                                                   Oct = D_2013_10, Nov = D_2013_11, Dec = D_2013_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2013 <- lapply(Dis_2013, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2013 <- lapply(Dis_2013, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2013 <- lapply(Dis_2013, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2013 <- lapply(Dis_2013, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2013  <- lapply(Dis_2013, function(x) drop_na(x))
+#view(Dis_2013_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2013_df <- as.data.frame(do.call(rbind, Dis_2013))
+
+
+# Create a new column containing Site number
+Dis_2013_df$ETC <- rownames(Dis_2013_df)
+rownames(Dis_2013_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2013_df <- separate(Dis_2013_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2013_df <- Dis_2013_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2013_df$Date <- as.Date(as.numeric(Dis_2013_df$Date), origin = "2012-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2013_df <- Dis_2013_df %>% complete(Date= seq.Date(min(as.Date("2013-01-01")), max(as.Date("2013-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2013_df$Discharge <- as.numeric(as.character(Dis_2013_df$Discharge))
+
+# Arrange the order
+Dis_2013_df <- Dis_2013_df %>% arrange(Site, Date)
+
+Dis_2013_df %>% filter(Site=="54") %>% view()
+Dis_2013_df %>% filter(Site=="72") %>% view()
+Dis_2013_df %>% filter(Site=="96") %>% view()
+
+# Dis_2013 long format complete
+
+# Visualise
+ggplot(Dis_2013_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2013_df, Site=="72"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2013_df, Site=="54" | Site=="72" | Site=="96"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2013 <- Hydro_Station %>% select(5, 13, 19) %>% drop_na()
+colnames(Site_2013)[2] <- "Site"
+Dis_2013_df$Site <- as.numeric(Dis_2013_df$Site)
+
+
+Fn_Dis_2013 <- right_join(Dis_2013_df, Site_2013, by="Site")
+rm(Dis_2013, Dis_2013_df, Site_2013)
+rm(D_2013_1, D_2013_2, D_2013_3, D_2013_4, D_2013_5, D_2013_6, D_2013_7, D_2013_8, D_2013_9, D_2013_10, D_2013_11, D_2013_12)
+
+Fn_Dis_2013 %>% filter(Site=="96") %>% view()
+```
+
+
+### 2014
+```{r}
+# Import Data (Data: 58-111)
+Dis_2014_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2014_51_75.xls", setclass = "tbl")
+Dis_2014_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2014_76_100.xls", setclass = "tbl")
+Dis_2014_3 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2014_101_125.xls", setclass = "tbl")
+
+Dis_2014 <- c(Dis_2014_1, Dis_2014_2, Dis_2014_3)
+rm(Dis_2014_1, Dis_2014_2, Dis_2014_3)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2014 <- lapply(Dis_2014, function(x) x[7:37, 2:25])
+
+# Select discharge values only
+Dis_2014 <- lapply(Dis_2014, function(x) x[,c(1,3,5,7,9,11,13,15,17,19,21,23)])
+
+
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2014 <- lapply(Dis_2014, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2014_1 <- seq.Date(from = as.Date("2014-01-01"), length.out = 31, by=1)
+D_2014_2 <- seq.Date(from = as.Date("2014-02-01"), length.out = 31, by=1)
+D_2014_3 <- seq.Date(from = as.Date("2014-03-01"), length.out = 31, by=1)
+D_2014_4 <- seq.Date(from = as.Date("2014-04-01"), length.out = 31, by=1)
+D_2014_5 <- seq.Date(from = as.Date("2014-05-01"), length.out = 31, by=1)
+D_2014_6 <- seq.Date(from = as.Date("2014-06-01"), length.out = 31, by=1)
+D_2014_7 <- seq.Date(from = as.Date("2014-07-01"), length.out = 31, by=1)
+D_2014_8 <- seq.Date(from = as.Date("2014-08-01"), length.out = 31, by=1)
+D_2014_9 <- seq.Date(from = as.Date("2014-09-01"), length.out = 31, by=1)
+D_2014_10 <- seq.Date(from = as.Date("2014-10-01"), length.out = 31, by=1)
+D_2014_11 <- seq.Date(from = as.Date("2014-11-01"), length.out = 31, by=1)
+D_2014_12 <- seq.Date(from = as.Date("2014-12-01"), length.out = 31, by=1)
+
+Dis_2014 <- lapply(Dis_2014, function(x) cbind(x, Jan = D_2014_1, Feb = D_2014_2, Mar = D_2014_3,
+                                                   Apr = D_2014_4, May = D_2014_5, Jun = D_2014_6,
+                                                   Jul = D_2014_7, Aug = D_2014_8, Sep = D_2014_9,
+                                                   Oct = D_2014_10, Nov = D_2014_11, Dec = D_2014_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2014 <- lapply(Dis_2014, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2014 <- lapply(Dis_2014, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2014 <- lapply(Dis_2014, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2014 <- lapply(Dis_2014, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2014  <- lapply(Dis_2014, function(x) drop_na(x))
+#view(Dis_2014_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2014_df <- as.data.frame(do.call(rbind, Dis_2014))
+
+
+# Create a new column containing Site number
+Dis_2014_df$ETC <- rownames(Dis_2014_df)
+rownames(Dis_2014_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2014_df <- separate(Dis_2014_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2014_df <- Dis_2014_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2014_df$Date <- as.Date(as.numeric(Dis_2014_df$Date), origin = "2013-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2014_df <- Dis_2014_df %>% complete(Date= seq.Date(min(as.Date("2014-01-01")), max(as.Date("2014-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2014_df$Discharge <- as.numeric(as.character(Dis_2014_df$Discharge))
+
+# Arrange the order
+Dis_2014_df <- Dis_2014_df %>% arrange(Site, Date)
+
+Dis_2014_df %>% filter(Site=="59") %>% view()
+Dis_2014_df %>% filter(Site=="73") %>% view()
+Dis_2014_df %>% filter(Site=="75") %>% view()
+
+# Dis_2014 long format complete
+
+# Visualise
+ggplot(Dis_2014_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2014_df, Site=="59"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2014_df, Site=="59" | Site=="73" | Site=="75"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2014 <- Hydro_Station %>% select(5, 14, 19) %>% drop_na()
+colnames(Site_2014)[2] <- "Site"
+Dis_2014_df$Site <- as.numeric(Dis_2014_df$Site)
+
+
+Fn_Dis_2014 <- right_join(Dis_2014_df, Site_2014, by="Site")
+rm(Dis_2014, Dis_2014_df, Site_2014)
+rm(D_2014_1, D_2014_2, D_2014_3, D_2014_4, D_2014_5, D_2014_6, D_2014_7, D_2014_8, D_2014_9, D_2014_10, D_2014_11, D_2014_12)
+
+Fn_Dis_2014 %>% filter(Site=="96") %>% view()
+```
+
+
+### 2015
+```{r}
+# Import Data (Data: 59-115)
+Dis_2015_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2015_51_75.xls", setclass = "tbl")
+Dis_2015_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2015_76_100.xls", setclass = "tbl")
+Dis_2015_3 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2015_101_125.xls", setclass = "tbl")
+
+Dis_2015 <- c(Dis_2015_1, Dis_2015_2, Dis_2015_3)
+rm(Dis_2015_1, Dis_2015_2, Dis_2015_3)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2015 <- lapply(Dis_2015, function(x) x[7:37, 2:25])
+
+# Select discharge values only
+Dis_2015 <- lapply(Dis_2015, function(x) x[,c(1,3,5,7,9,11,13,15,17,19,21,23)])
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2015 <- lapply(Dis_2015, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2015_1 <- seq.Date(from = as.Date("2015-01-01"), length.out = 31, by=1)
+D_2015_2 <- seq.Date(from = as.Date("2015-02-01"), length.out = 31, by=1)
+D_2015_3 <- seq.Date(from = as.Date("2015-03-01"), length.out = 31, by=1)
+D_2015_4 <- seq.Date(from = as.Date("2015-04-01"), length.out = 31, by=1)
+D_2015_5 <- seq.Date(from = as.Date("2015-05-01"), length.out = 31, by=1)
+D_2015_6 <- seq.Date(from = as.Date("2015-06-01"), length.out = 31, by=1)
+D_2015_7 <- seq.Date(from = as.Date("2015-07-01"), length.out = 31, by=1)
+D_2015_8 <- seq.Date(from = as.Date("2015-08-01"), length.out = 31, by=1)
+D_2015_9 <- seq.Date(from = as.Date("2015-09-01"), length.out = 31, by=1)
+D_2015_10 <- seq.Date(from = as.Date("2015-10-01"), length.out = 31, by=1)
+D_2015_11 <- seq.Date(from = as.Date("2015-11-01"), length.out = 31, by=1)
+D_2015_12 <- seq.Date(from = as.Date("2015-12-01"), length.out = 31, by=1)
+
+Dis_2015 <- lapply(Dis_2015, function(x) cbind(x, Jan = D_2015_1, Feb = D_2015_2, Mar = D_2015_3,
+                                                   Apr = D_2015_4, May = D_2015_5, Jun = D_2015_6,
+                                                   Jul = D_2015_7, Aug = D_2015_8, Sep = D_2015_9,
+                                                   Oct = D_2015_10, Nov = D_2015_11, Dec = D_2015_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2015 <- lapply(Dis_2015, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2015 <- lapply(Dis_2015, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2015 <- lapply(Dis_2015, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2015 <- lapply(Dis_2015, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2015  <- lapply(Dis_2015, function(x) drop_na(x))
+#view(Dis_2015_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2015_df <- as.data.frame(do.call(rbind, Dis_2015))
+
+
+# Create a new column containing Site number
+Dis_2015_df$ETC <- rownames(Dis_2015_df)
+rownames(Dis_2015_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2015_df <- separate(Dis_2015_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2015_df <- Dis_2015_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2015_df$Date <- as.Date(as.numeric(Dis_2015_df$Date), origin = "2014-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2015_df <- Dis_2015_df %>% complete(Date= seq.Date(min(as.Date("2015-01-01")), max(as.Date("2015-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2015_df$Discharge <- as.numeric(as.character(Dis_2015_df$Discharge))
+
+# Arrange the order
+Dis_2015_df <- Dis_2015_df %>% arrange(Site, Date)
+
+Dis_2015_df %>% filter(Site=="113") %>% view()
+Dis_2015_df %>% filter(Site=="97") %>% view()
+
+# Dis_2015 long format complete
+
+# Visualise
+ggplot(Dis_2015_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2015_df, Site=="97"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2015_df, Site=="97" | Site=="113"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2015 <- Hydro_Station %>% select(5, 15, 19) %>% drop_na()
+colnames(Site_2015)[2] <- "Site"
+Dis_2015_df$Site <- as.numeric(Dis_2015_df$Site)
+
+
+Fn_Dis_2015 <- right_join(Dis_2015_df, Site_2015, by="Site")
+rm(Dis_2015, Dis_2015_df, Site_2015)
+rm(D_2015_1, D_2015_2, D_2015_3, D_2015_4, D_2015_5, D_2015_6, D_2015_7, D_2015_8, D_2015_9, D_2015_10, D_2015_11, D_2015_12)
+
+Fn_Dis_2015 %>% filter(Site=="98") %>% view()
+```
+
+
+### 2016
+```{r}
+# Import Data (Data: 60-113)
+Dis_2016_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2016_51_75.xls", setclass = "tbl")
+Dis_2016_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2016_76_100.xls", setclass = "tbl")
+Dis_2016_3 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2016_101_125.xls", setclass = "tbl")
+
+Dis_2016 <- c(Dis_2016_1, Dis_2016_2, Dis_2016_3)
+rm(Dis_2016_1, Dis_2016_2, Dis_2016_3)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2016 <- lapply(Dis_2016, function(x) x[7:37, 2:25])
+
+# Select discharge values only
+Dis_2016 <- lapply(Dis_2016, function(x) x[,c(1,3,5,7,9,11,13,15,17,19,21,23)])
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2016 <- lapply(Dis_2016, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2016_1 <- seq.Date(from = as.Date("2016-01-01"), length.out = 31, by=1)
+D_2016_2 <- seq.Date(from = as.Date("2016-02-01"), length.out = 31, by=1)
+D_2016_3 <- seq.Date(from = as.Date("2016-03-01"), length.out = 31, by=1)
+D_2016_4 <- seq.Date(from = as.Date("2016-04-01"), length.out = 31, by=1)
+D_2016_5 <- seq.Date(from = as.Date("2016-05-01"), length.out = 31, by=1)
+D_2016_6 <- seq.Date(from = as.Date("2016-06-01"), length.out = 31, by=1)
+D_2016_7 <- seq.Date(from = as.Date("2016-07-01"), length.out = 31, by=1)
+D_2016_8 <- seq.Date(from = as.Date("2016-08-01"), length.out = 31, by=1)
+D_2016_9 <- seq.Date(from = as.Date("2016-09-01"), length.out = 31, by=1)
+D_2016_10 <- seq.Date(from = as.Date("2016-10-01"), length.out = 31, by=1)
+D_2016_11 <- seq.Date(from = as.Date("2016-11-01"), length.out = 31, by=1)
+D_2016_12 <- seq.Date(from = as.Date("2016-12-01"), length.out = 31, by=1)
+
+Dis_2016 <- lapply(Dis_2016, function(x) cbind(x, Jan = D_2016_1, Feb = D_2016_2, Mar = D_2016_3,
+                                                   Apr = D_2016_4, May = D_2016_5, Jun = D_2016_6,
+                                                   Jul = D_2016_7, Aug = D_2016_8, Sep = D_2016_9,
+                                                   Oct = D_2016_10, Nov = D_2016_11, Dec = D_2016_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2016 <- lapply(Dis_2016, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2016 <- lapply(Dis_2016, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2016 <- lapply(Dis_2016, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2016 <- lapply(Dis_2016, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2016  <- lapply(Dis_2016, function(x) drop_na(x))
+#view(Dis_2016_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2016_df <- as.data.frame(do.call(rbind, Dis_2016))
+
+
+# Create a new column containing Site number
+Dis_2016_df$ETC <- rownames(Dis_2016_df)
+rownames(Dis_2016_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2016_df <- separate(Dis_2016_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2016_df <- Dis_2016_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2016_df$Date <- as.Date(as.numeric(Dis_2016_df$Date), origin = "2015-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2016_df <- Dis_2016_df %>% complete(Date= seq.Date(min(as.Date("2016-01-01")), max(as.Date("2016-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2016_df$Discharge <- as.numeric(as.character(Dis_2016_df$Discharge))
+
+# Arrange the order
+Dis_2016_df <- Dis_2016_df %>% arrange(Site, Date)
+
+Dis_2016_df %>% filter(Site=="96") %>% view()
+Dis_2016_df %>% filter(Site=="97") %>% view()
+Dis_2016_df %>% filter(Site=="107") %>% view()
+
+
+# Dis_2016 long format complete
+
+# Visualise
+ggplot(Dis_2016_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2016_df, Site=="96"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2016_df, Site=="96" | Site=="97" | Site=="107"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2016 <- Hydro_Station %>% select(5, 16, 19) %>% drop_na()
+colnames(Site_2016)[2] <- "Site"
+Dis_2016_df$Site <- as.numeric(Dis_2016_df$Site)
+
+
+Fn_Dis_2016 <- right_join(Dis_2016_df, Site_2016, by="Site")
+rm(Dis_2016, Dis_2016_df, Site_2016)
+rm(D_2016_1, D_2016_2, D_2016_3, D_2016_4, D_2016_5, D_2016_6, D_2016_7, D_2016_8, D_2016_9, D_2016_10, D_2016_11, D_2016_12)
+
+Fn_Dis_2016 %>% filter(Site=="107") %>% view()
+```
+
+
+### 2017
+
+```{r}
+# Import Data (Data: 63-120)
+Dis_2017_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2017_51_75.xls", setclass = "tbl")
+Dis_2017_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2017_76_100.xls", setclass = "tbl")
+Dis_2017_3 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2017_101_125.xls", setclass = "tbl")
+
+Dis_2017 <- c(Dis_2017_1, Dis_2017_2, Dis_2017_3)
+rm(Dis_2017_1, Dis_2017_2, Dis_2017_3)
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2017 <- lapply(Dis_2017, function(x) x[7:37, 2:25])
+
+# Select discharge values only
+Dis_2017 <- lapply(Dis_2017, function(x) x[,c(1,3,5,7,9,11,13,15,17,19,21,23)])
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2017 <- lapply(Dis_2017, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2017_1 <- seq.Date(from = as.Date("2017-01-01"), length.out = 31, by=1)
+D_2017_2 <- seq.Date(from = as.Date("2017-02-01"), length.out = 31, by=1)
+D_2017_3 <- seq.Date(from = as.Date("2017-03-01"), length.out = 31, by=1)
+D_2017_4 <- seq.Date(from = as.Date("2017-04-01"), length.out = 31, by=1)
+D_2017_5 <- seq.Date(from = as.Date("2017-05-01"), length.out = 31, by=1)
+D_2017_6 <- seq.Date(from = as.Date("2017-06-01"), length.out = 31, by=1)
+D_2017_7 <- seq.Date(from = as.Date("2017-07-01"), length.out = 31, by=1)
+D_2017_8 <- seq.Date(from = as.Date("2017-08-01"), length.out = 31, by=1)
+D_2017_9 <- seq.Date(from = as.Date("2017-09-01"), length.out = 31, by=1)
+D_2017_10 <- seq.Date(from = as.Date("2017-10-01"), length.out = 31, by=1)
+D_2017_11 <- seq.Date(from = as.Date("2017-11-01"), length.out = 31, by=1)
+D_2017_12 <- seq.Date(from = as.Date("2017-12-01"), length.out = 31, by=1)
+
+Dis_2017 <- lapply(Dis_2017, function(x) cbind(x, Jan = D_2017_1, Feb = D_2017_2, Mar = D_2017_3,
+                                                   Apr = D_2017_4, May = D_2017_5, Jun = D_2017_6,
+                                                   Jul = D_2017_7, Aug = D_2017_8, Sep = D_2017_9,
+                                                   Oct = D_2017_10, Nov = D_2017_11, Dec = D_2017_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2017 <- lapply(Dis_2017, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2017 <- lapply(Dis_2017, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2017 <- lapply(Dis_2017, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2017 <- lapply(Dis_2017, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2017  <- lapply(Dis_2017, function(x) drop_na(x))
+#view(Dis_2016_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2017_df <- as.data.frame(do.call(rbind, Dis_2017))
+
+
+# Create a new column containing Site number
+Dis_2017_df$ETC <- rownames(Dis_2017_df)
+rownames(Dis_2017_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2017_df <- separate(Dis_2017_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2017_df <- Dis_2017_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2017_df$Date <- as.Date(as.numeric(Dis_2017_df$Date), origin = "2016-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2017_df <- Dis_2017_df %>% complete(Date= seq.Date(min(as.Date("2017-01-01")), max(as.Date("2017-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2017_df$Discharge <- as.numeric(as.character(Dis_2017_df$Discharge))
+
+# Arrange the order
+Dis_2017_df <- Dis_2017_df %>% arrange(Site, Date)
+
+Dis_2017_df %>% filter(Site=="63") %>% view()
+Dis_2017_df %>% filter(Site=="75") %>% view()
+Dis_2017_df %>% filter(Site=="92") %>% view()
+
+
+# Dis_2017 long format complete
+
+# Visualise
+ggplot(Dis_2017_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2017_df, Site=="92"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2017_df, Site=="87" | Site=="92" | Site=="113"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2017 <- Hydro_Station %>% select(5, 17, 19) %>% drop_na()
+colnames(Site_2017)[2] <- "Site"
+
+Dis_2017_df$Site <- as.numeric(Dis_2017_df$Site)
+
+
+# Finalise it and remove unneccesary files
+Fn_Dis_2017 <- right_join(Dis_2017_df, Site_2017, by="Site")
+rm(Dis_2017, Dis_2017_df, Site_2017)
+rm(D_2017_1, D_2017_2, D_2017_3, D_2017_4, D_2017_5, D_2017_6, D_2017_7, D_2017_8, D_2017_9, D_2017_10, D_2017_11, D_2017_12)
+
+Fn_Dis_2017 %>% filter(Site=="92") %>% view()
+
+```
+
+### 2018
+
+```{r}
+# Import Data
+Dis_2018_1 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2018_51_75.xls", setclass = "tbl")
+Dis_2018_2 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2018_76_100.xls", setclass = "tbl")
+Dis_2018_3 <- import_list("D:/Rmarkdown/Discharge_Data/Dis_2018_101_125.xls", setclass = "tbl")
+
+# Somehow, 2018 Data is imported with the extra sheet that is named "DATA" (26th) has only 12 columns.
+# This causes an error when columns from 2:25 is to be selected. Therefore, remove 26 sheet before combine them to a list.
+Dis_2018_1 <- Dis_2018_1[-26]
+Dis_2018_2 <- Dis_2018_2[-26]
+Dis_2018_3 <- Dis_2018_3[-26]
+
+Dis_2018 <- c(Dis_2018_1, Dis_2018_2, Dis_2018_3)
+rm(Dis_2018_1, Dis_2018_2, Dis_2018_3)
+
+
+# Extract rows (7:37) and columns (2:25) for discharge 
+Dis_2018 <- lapply(Dis_2018, function(x) x[7:37, 2:25])
+
+# Select discharge values only
+Dis_2018 <- lapply(Dis_2018, function(x) x[,c(1,3,5,7,9,11,13,15,17,19,21,23)])
+
+# Change column names for discharge in list
+colnames_Month_list <- c(1:12)
+Dis_2018 <- lapply(Dis_2018, setNames, colnames_Month_list)
+#colnames_list <- c("1", "Date1", "2", "Date2", "3", "Date3", "4", "Date4", "5", "Date5", "6", "Date6",
+                 #"7", "Date7", "8", "Date8", "9", "Date9", "10", "Date10", "11", "Date11", "12", "Date12")
+
+# Create Date columns and cbind with list
+
+# -> Be sure to have equal numbers for cbind
+D_2018_1 <- seq.Date(from = as.Date("2018-01-01"), length.out = 31, by=1)
+D_2018_2 <- seq.Date(from = as.Date("2018-02-01"), length.out = 31, by=1)
+D_2018_3 <- seq.Date(from = as.Date("2018-03-01"), length.out = 31, by=1)
+D_2018_4 <- seq.Date(from = as.Date("2018-04-01"), length.out = 31, by=1)
+D_2018_5 <- seq.Date(from = as.Date("2018-05-01"), length.out = 31, by=1)
+D_2018_6 <- seq.Date(from = as.Date("2018-06-01"), length.out = 31, by=1)
+D_2018_7 <- seq.Date(from = as.Date("2018-07-01"), length.out = 31, by=1)
+D_2018_8 <- seq.Date(from = as.Date("2018-08-01"), length.out = 31, by=1)
+D_2018_9 <- seq.Date(from = as.Date("2018-09-01"), length.out = 31, by=1)
+D_2018_10 <- seq.Date(from = as.Date("2018-10-01"), length.out = 31, by=1)
+D_2018_11 <- seq.Date(from = as.Date("2018-11-01"), length.out = 31, by=1)
+D_2018_12 <- seq.Date(from = as.Date("2018-12-01"), length.out = 31, by=1)
+
+Dis_2018 <- lapply(Dis_2018, function(x) cbind(x, Jan = D_2018_1, Feb = D_2018_2, Mar = D_2018_3,
+                                                   Apr = D_2018_4, May = D_2018_5, Jun = D_2018_6,
+                                                   Jul = D_2018_7, Aug = D_2018_8, Sep = D_2018_9,
+                                                   Oct = D_2018_10, Nov = D_2018_11, Dec = D_2018_12))
+
+
+# Arrange the columns in the order Discharge and Date
+Dis_2018 <- lapply(Dis_2018, function(x) x %>% select(1, 13, 2, 14, 3, 15, 4, 16, 5, 17, 6, 18, 7, 19, 8, 20, 9, 21, 10, 22, 11, 23, 12, 24))
+
+
+# Change column names again to Discharge and Date
+colnames_list2 <- rep(c("Discharge", "Date"), 12)
+Dis_2018 <- lapply(Dis_2018, setNames, colnames_list2)
+
+
+# Convert to long format
+Dis_2018 <- lapply(Dis_2018, function(x) mapply(c, x[,1:2], x[,3:4], x[,5:6], x[,7:8], x[,9:10], x[,11:12], x[,13:14], x[,15:16], x[,17:18], x[,19:20], x[,21:22], x[,23:24]))
+
+
+# Convert to data frame 
+Dis_2018 <- lapply(Dis_2018, function(x) data.frame(x))
+
+
+# Drop NA
+Dis_2018  <- lapply(Dis_2018, function(x) drop_na(x))
+#view(Dis_2016_1[['76']]) <- always check
+
+
+
+# Convert list to dataframe by rbind or cbind 
+Dis_2018_df <- as.data.frame(do.call(rbind, Dis_2018))
+
+
+# Create a new column containing Site number
+Dis_2018_df$ETC <- rownames(Dis_2018_df)
+rownames(Dis_2018_df) <- NULL
+
+# Separate the new column for Site number
+Dis_2018_df <- separate(Dis_2018_df, ETC, into=c("Site", "mis"), remove= FALSE)
+Dis_2018_df <- Dis_2018_df %>% select(2,1,4)
+
+# Convert integar to Date
+Dis_2018_df$Date <- as.Date(as.numeric(Dis_2018_df$Date), origin = "2017-12-31")
+
+# Complete Data Column for eash site (some site have missing values)
+Dis_2018_df <- Dis_2018_df %>% complete(Date= seq.Date(min(as.Date("2018-01-01")), max(as.Date("2018-12-31")), by="day"), Site)
+
+# Convert Discharge type to numeric
+Dis_2018_df$Discharge <- as.numeric(as.character(Dis_2018_df$Discharge))
+
+# Arrange the order
+Dis_2018_df <- Dis_2018_df %>% arrange(Site, Date)
+
+Dis_2018_df %>% filter(Site=="113") %>% view()
+Dis_2018_df %>% filter(Site=="105") %>% view()
+Dis_2018_df %>% filter(Site=="102") %>% view()
+Dis_2018_df %>% filter(Site=="89") %>% view()
+
+# Dis_2018 long format complete
+
+# Visualise
+ggplot(Dis_2018_df, aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+
+
+ggplot(data=subset(Dis_2018_df, Site=="113"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()
+ggplot(data=subset(Dis_2018_df, Site=="113" | Site=="105" | Site=="89"), aes(x=Date, y=Discharge, group=Site))+geom_line()+theme_bw()+facet_grid(rows= vars(Site))
+
+
+## Combine Site info with the complete data frame
+Site_2018 <- Hydro_Station %>% select(5, 18, 19) %>% drop_na()
+colnames(Site_2018)[2] <- "Site"
+Dis_2018_df$Site <- as.numeric(Dis_2018_df$Site)
+
+
+# Finalise it and remove unneccesary files
+Fn_Dis_2018 <- right_join(Dis_2018_df, Site_2018, by="Site")
+rm(Dis_2018, Dis_2018_df, Site_2018)
+rm(D_2018_1, D_2018_2, D_2018_3, D_2018_4, D_2018_5, D_2018_6, D_2018_7, D_2018_8, D_2018_9, D_2018_10, D_2018_11, D_2018_12)
+
+Fn_Dis_2018 %>% filter(Site=="113") %>% view()
+Fn_Dis_2018 %>% filter(Site=="102") %>% view()
+```
+
+## Merge 
+```{r}
+
+Final_ND_Discharge <-
+  rbind(Fn_Dis_2006, Fn_Dis_2007, Fn_Dis_2008, Fn_Dis_2009, Fn_Dis_2010, Fn_Dis_2011, Fn_Dis_2012, Fn_Dis_2013, Fn_Dis_2014, Fn_Dis_2015, Fn_Dis_2016, Fn_Dis_2017, Fn_Dis_2018) %>% arrange(Site, Date)
+
+write.csv(Final_ND_Discharge, "D:/Rmarkdown/Discharge_Data/Final_ND_Discharge.csv")
+```
+
