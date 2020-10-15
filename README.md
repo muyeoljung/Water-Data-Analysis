@@ -1,3 +1,14 @@
-## PhD Project: Chapter 4
+## PhD Project: Chapter 3
 
-### Water Quality Data Set
+### Water Quality Analysis
+
+#### Main: Water Quality Chemical Data
+* WT, DO, etc
+
+
+#### Sub: Hydrological Data in ND
+
+* Data Period: 2006-01-01 - 2018-12-31
+   * Data prior to 2006 is not digitised.
+* Data Period varies from site to site
+* Discharge (m3/s) Data in the Study Area
